@@ -4717,6 +4717,7 @@ function ResourceMultiDayView(element, calendar) {
 	
 	// exports
 	t.render = render;
+    t.setDays = setDays;
 	
 	
 	// imports
@@ -4728,23 +4729,69 @@ function ResourceMultiDayView(element, calendar) {
 	
 
 	function render(date, delta) {
+        var days;
+        if (delta instanceof Array) {
+            days = [];
+            delta.forEach(function(date) {
+                days.push(cloneDate(date, true));
+            });
 
-        if (delta) {
-            addDays(date, delta);
+            var start = cloneDate(days[0], true);
+            var end = cloneDate(days[days.length-1], true);
+
+            t.title = formatDate(date, opt('titleFormat'));
+
+            t.start = t.visStart = start;
+            t.end = t.visEnd = end;
         }
-        skipHiddenDays(date, delta < 0 ? -1 : 1);
+        else {
+            if(t.days == null) {
+                if (delta) {
+                    addDays(date, delta);
+                }
+                skipHiddenDays(date, delta < 0 ? -1 : 1);
 
-		var start = cloneDate(date, true);
-		var end = addDays(cloneDate(start), 4);
+                var start = cloneDate(date, true);
+                var end = addDays(cloneDate(start), 4);
 
-		t.title = formatDate(date, opt('titleFormat'));
+                t.title = formatDate(date, opt('titleFormat'));
 
-		t.start = t.visStart = start;
-		t.end = t.visEnd = end;
+                t.start = t.visStart = start;
+                t.end = t.visEnd = end;
 
-		renderResource(4);
+                days = [];
+
+                var ms = start.getTime();
+
+                if(delta < 1) delta = 1;
+                for(var i=0;i<delta;i++) {
+                    days.push(new Date(ms + (i * 1000 * 60 * 60 * 24)));
+                }
+            }
+            else {
+                days = [];
+                for(var i=0;i<t.days.length;i++) {
+                    var day = t.days[i];
+                    var ms = day.getTime();
+                    days.push(new Date(ms + (delta * 1000 * 60 * 60 * 24)));
+                }
+
+                var start = cloneDate(days[0], true);
+                var end = cloneDate(days[days.length-1], true);
+
+                t.title = formatDate(start, opt('titleFormat'));
+
+                t.start = t.visStart = start;
+                t.end = t.visEnd = end;
+            }
+        }
+
+		renderResource(days);
 	}
-	
+
+    function setDays(days) {
+        renderResource(days);
+    }
 
 }
 
@@ -4966,8 +5013,9 @@ function ResourceView(element, calendar, viewName) {
 
 	
     function renderResource(days) {
-        if(days==null) days = 1;
-        colCnt = resources.length * days;
+        if(days==null) days = [t.start];
+        t.days = days;
+        colCnt = resources.length * days.length;
         updateOptions();
 
         if (!dayTable) {
@@ -5714,15 +5762,23 @@ function ResourceView(element, calendar, viewName) {
     
     /* return the column index the resource is at.  Return -1 if resource cannot be found. */
     function resourceCol(date, resource) {
-        var dayDelta = dayDiff(date, t.visStart);
+        var dayDelta = 0;
+
+        for(var i=0;i<t.days.length;i++) {
+            if (t.days[i].getTime() == date.getTime()) {
+                dayDelta = i;
+                break;
+            }
+        }
+
         var resourceNum = -1;
         for (var i=0; i<resources.length; i++) {
             if (resource.id === resources[i].id) {
-                resourceNum = i;;
+                resourceNum = i;
             }
         }
         if(resourceNum === -1) return -1;
-        return dayDelta * resources.length + resourceNum;
+        return (dayDelta * resources.length) + resourceNum;
     }
 
     function colToResource(col) {
@@ -5732,8 +5788,9 @@ function ResourceView(element, calendar, viewName) {
 
     function resourceDate(col) {
         var delta = Math.floor(col / resources.length);
-        var date = cloneDate(t.visStart);
-        return addDays(date, delta);
+        if(delta > (t.days.length - 1)) delta = t.days.length - 1;
+        var date = cloneDate(t.days[delta]);
+        return date;
     }
 
 
