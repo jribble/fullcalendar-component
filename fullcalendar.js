@@ -1285,7 +1285,7 @@ function EventManager(options, _sources) {
             return;
         }
         
-        var resources = options.resources;
+        var resources = options.resources == null ? [] : options.resources;
         
         $.each(
             resources,
@@ -5014,6 +5014,7 @@ function ResourceView(element, calendar, viewName) {
 	
     function renderResource(days) {
         if(days==null) days = [t.start];
+        resources = t.resources = calendar.fetchResources();
         if(resources==null||resources.length==0) resources = [{name:"",id:""}];
         t.days = days;
         colCnt = resources.length * days.length;
