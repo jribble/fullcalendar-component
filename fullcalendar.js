@@ -695,7 +695,7 @@ function Calendar(element, options, eventSources, resourceSources) {
 			return options[name];
 		}
         options[name] = value;
-		if (name == 'height' || name == 'contentHeight' || name == 'aspectRatio' || name == 'slotHeight') {
+		if (name == 'height' || name == 'contentHeight' || name == 'aspectRatio') {
 			updateSize();
 		}
 	}
@@ -5364,8 +5364,8 @@ function ResourceView(element, calendar, viewName) {
             var resource = resources[col % resources.length];
             date = cellToDate(0, col);
             html +=
-                "<th class='fc-" + dayIDs[date.getDay()] + " fc-col" + col + ' ' + headerClass + "'>" +
-                htmlEscape(resource.name) +
+                "<th class='fc-" + dayIDs[date.getDay()] + " fc-col" + col + ' ' + headerClass + "'" + (colMinWidth ? "style='min-width:" + colMinWidth + "px;'" : "" ) + ">" +
+                (resource.name == "" ? "&nbsp;" : htmlEscape(resource.name)) +
                 "</th>";
         }
         html +=
@@ -5546,7 +5546,7 @@ function ResourceView(element, calendar, viewName) {
             .addClass('fc-last');
         }
 		
-        colWidth = Math.floor((slotTableWidth - axisWidth) / colCnt);
+        colWidth = Math.floor(slotTableWidth / colCnt);
         //TODO: Make this configurable
         if(colMinWidth && colWidth < colMinWidth) colWidth = colMinWidth;
         setOuterWidth(resourceHeadCells.slice(0, -1), colWidth);
