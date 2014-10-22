@@ -601,3 +601,13 @@ table.fc-border-separate {
 	}
 	
 	
+
+/* Resource Highlights
+------------------------------------------------------------------------*/
+
+.fc-highlight-container > * {
+    z-index: -1;
+}
+
+	
+	

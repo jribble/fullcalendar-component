@@ -4746,26 +4746,36 @@ function ResourceMultiDayView(element, calendar) {
         }
         else {
             if(t.days == null) {
-                if (delta) {
-                    addDays(date, delta);
+                if(opt('days') != null) {
+                    days = opt('days');
+
+                    var start = cloneDate(days[0], true);
+                    var end = cloneDate(days[days.length-1], true);
+
+                    t.title = formatDate(start, opt('titleFormat'));
+
+                    t.start = t.visStart = start;
+                    t.end = t.visEnd = end;
                 }
-                skipHiddenDays(date, delta < 0 ? -1 : 1);
+                else {
+                    skipHiddenDays(date, delta < 0 ? -1 : 1);
 
-                var start = cloneDate(date, true);
-                var end = addDays(cloneDate(start), 4);
+                    t.title = formatDate(date, opt('titleFormat'));
 
-                t.title = formatDate(date, opt('titleFormat'));
+                    var start = cloneDate(date, true);
+                    var end = addDays(cloneDate(start), 1);
 
-                t.start = t.visStart = start;
-                t.end = t.visEnd = end;
+                    t.start = t.visStart = start;
+                    t.end = t.visEnd = end;
 
-                days = [];
+                    days = [];
 
-                var ms = start.getTime();
+                    var ms = start.getTime();
 
-                if(delta < 1) delta = 1;
-                for(var i=0;i<delta;i++) {
-                    days.push(new Date(ms + (i * 1000 * 60 * 60 * 24)));
+                    if(delta < 1) delta = 1;
+                    for(var i=0;i<delta;i++) {
+                        days.push(new Date(ms + (i * 1000 * 60 * 60 * 24)));
+                    }
                 }
             }
             else {
@@ -4897,6 +4907,7 @@ function ResourceView(element, calendar, viewName) {
     t.colContentLeft = colContentLeft;
     t.colContentRight = colContentRight;
     t.getDaySegmentContainer = function() { return daySegmentContainer };
+    t.getHighlightSegmentContainer = function() { return highlightSegmentContainer };
     t.getSlotSegmentContainer = function() { return slotSegmentContainer };
     t.getMinMinute = function() { return minMinute };
     t.getMaxMinute = function() { return maxMinute };
@@ -4941,6 +4952,7 @@ function ResourceView(element, calendar, viewName) {
 	var dateToCell = t.dateToCell;
 	var rangeToSegments = t.rangeToSegments;
     var formatDate = calendar.formatDate;
+    var renderHighlights = t.renderHighlights;
     
     
     // locals
@@ -4953,6 +4965,8 @@ function ResourceView(element, calendar, viewName) {
     var dayHeadCells;
     var resourceHead;
     var resourceHeadCells;
+    var resourceFoot;
+    var resourceFootCells;
     var dayBody;
     var dayBodyCells;
     var dayBodyCellInners;
@@ -4970,6 +4984,7 @@ function ResourceView(element, calendar, viewName) {
     var axisScroller;
     var slotScroller;
 	var slotContainer;
+    var highlightSegmentContainer;
     var slotSegmentContainer;
     var slotTable;
     var selectionHelper;
@@ -5185,6 +5200,10 @@ function ResourceView(element, calendar, viewName) {
             $("<div style='position:relative;width:100%'/>")
                 .appendTo(slotScroller);
 
+        highlightSegmentContainer =
+            $("<div class='fc-highlight-container' style='position:absolute;z-index:-1;top:0;left:0'/>")
+                .appendTo(slotContainer);
+
         slotSegmentContainer =
             $("<div class='fc-event-container' style='position:absolute;z-index:8;top:0;left:0'/>")
                 .appendTo(slotContainer);
@@ -5246,6 +5265,8 @@ function ResourceView(element, calendar, viewName) {
         dayHeadCells = dayHead.find('tr:eq(0) th');
         resourceHead = dayTable.find('thead tr:eq(1)');
         resourceHeadCells = resourceHead.find('th');
+        resourceFoot = dayTable.find('tfoot');
+        resourceFootCells = resourceFoot.find('tr:eq(0) td');
         dayBody = dayTable.find('tbody');
         dayBodyCells = dayBody.find('td');
         dayBodyCellInners = dayBodyCells.find('> div');
@@ -5274,6 +5295,15 @@ function ResourceView(element, calendar, viewName) {
             if(resourceId === "null") resourceId = null;
             var el = $(element);
             trigger('resourceRender', el, resourceId, el);
+        });
+
+        // trigger events for resource column footers
+        var footths = dayTable.find('tfoot th[data-resource-id]');
+        footths.each(function(index, element) {
+            var resourceId = $.attr(element, 'data-resource-id');
+            if(resourceId === "null") resourceId = null;
+            var el = $(element);
+            trigger('footerRender', el, resourceId, el);
         });
 
 
@@ -5345,10 +5375,12 @@ function ResourceView(element, calendar, viewName) {
 
 
     function buildDayTableHTML() {
+        var showFooter = opt('showFooter');
         var html =
             "<table style='width:100%;position:relative;' class='fc-agenda-days fc-border-separate' cellspacing='0'>" +
             buildDayTableHeadHTML() +
             buildDayTableBodyHTML() +
+            (!!showFooter ? buildDayTableFootHTML() : "") +
             "</table>";
 
         return html;
@@ -5455,6 +5487,34 @@ function ResourceView(element, calendar, viewName) {
     }
 
 
+    function buildDayTableFootHTML() {
+        var headerClass = tm + "-widget-header";
+        var date;
+        var today = moment(clearTime(new Date()));
+        var html = '';
+        var col;
+
+        html +=
+            "<tfoot>" +
+            "<tr>";
+
+        for (var col=0; col<colCnt; col++) {
+            var resource = resources[col % resources.length];
+            date = cellToDate(0, col);
+            html +=
+                "<th class='fc-" + dayIDs[date.getDay()] + " fc-col" + col + ' ' + headerClass + "'" + (colMinWidth ? "style='min-width:" + colMinWidth + "px;'" : "" ) + " data-date='" + moment(date).format("YYYY-MM-DD") + "' data-resource-id='" + resource.id + "' >" +
+                "&nbsp;" + //(resource.name == "" ? "&nbsp;" : htmlEscape(resource.name)) +
+                "</th>";
+        }
+
+        html +=
+            "</tr>" +
+            "</tfoot>";
+
+        return html;
+    }
+
+
     function buildDayGutterHTML() {
         var headerClass = tm + "-widget-header";
         var html =
@@ -5500,17 +5560,18 @@ function ResourceView(element, calendar, viewName) {
             height - headHeight,   // when scrollbars
             slotTable.height() + allDayHeight + 1 // when no scrollbars. +1 for bottom border
             );
+        var footerHeight = resourceFoot.height();
 		
         dayBodyFirstCellStretcher
-        .height(bodyHeight - vsides(dayBodyFirstCell));
+        .height(bodyHeight - vsides(dayBodyFirstCell) - footerHeight);
 		
         slotLayer.css('top', headHeight);
 
         var slotTableHeight = slotScroller[0].clientHeight;
         var gutterHeight = slotScroller.height() - slotTableHeight;
 
-        axisScroller.height(bodyHeight - allDayHeight - 1 - gutterHeight);
-        slotScroller.height(bodyHeight - allDayHeight - 1);
+        axisScroller.height(bodyHeight - allDayHeight - 1 - gutterHeight - footerHeight);
+        slotScroller.height(bodyHeight - allDayHeight - 1 - footerHeight);
 		
 		// the stylesheet guarantees that the first row has no border.
 		// this allows .height() to work well cross-browser.
@@ -5673,7 +5734,7 @@ function ResourceView(element, calendar, viewName) {
 					segment.rightCol
 				)
 			);
-    }
+        }
 	}
 
 	
@@ -5793,7 +5854,7 @@ function ResourceView(element, calendar, viewName) {
         var dayDelta = 0;
 
         for(var i=0;i<t.days.length;i++) {
-            if (t.days[i].getTime() == date.getTime()) {
+            if (moment(t.days[i]).isSame(date, 'day')) {
                 dayDelta = i;
                 break;
             }
@@ -6071,6 +6132,8 @@ function ResourceEventRenderer() {
     t.renderEvents = renderEvents;
     t.clearEvents = clearEvents;
     t.slotSegHtml = slotSegHtml;
+    t.renderHighlights = renderHighlights;
+    t.clearHighlights = clearHighlights;
 	
     
     // imports
@@ -6084,11 +6147,14 @@ function ResourceEventRenderer() {
     var setHeight = t.setHeight;
     var getDaySegmentContainer = t.getDaySegmentContainer;
     var getSlotSegmentContainer = t.getSlotSegmentContainer;
+    var getHighlightSegmentContainer = t.getHighlightSegmentContainer;
     var getHoverListener = t.getHoverListener;
     var getMaxMinute = t.getMaxMinute;
     var getMinMinute = t.getMinMinute;
     var timePosition = t.timePosition;
 	var getIsCellAllDay = t.getIsCellAllDay;
+    var colLeft = t.colLeft;
+    var colRight = t.colRight;
     var colContentLeft = t.colContentLeft;
     var colContentRight = t.colContentRight;
 	var cellToDate = t.cellToDate;
@@ -6139,12 +6205,25 @@ function ResourceEventRenderer() {
         }
 
         renderSlotSegs(compileSlotSegs(slotEvents), modifiedEventId);
+
+        t.highlights = opt('highlights');
+        if(t.highlights == null) t.highlights = [];
+        renderHighlights(t.highlights);
     }
 	
 	
     function clearEvents() {
         getDaySegmentContainer().empty();
         getSlotSegmentContainer().empty();
+    }
+
+    function renderHighlights(highlights) {
+        renderHighlightSegs(compileHighlightSegs(highlights));
+    }
+
+
+    function clearHighlights() {
+        getHighlightSegmentContainer().empty();
     }
 	
     
@@ -6233,6 +6312,46 @@ function ResourceEventRenderer() {
 
         return segs;
     }
+
+
+    function compileHighlightSegs(highlights) {
+        var colCnt = getColCnt(),
+            minMinute = getMinMinute(),
+            maxMinute = getMaxMinute(),
+            d,
+            visEventEnds,
+            i,
+            j, seg,
+            colSegs,
+            segs=[];
+
+        for (i=0; i<colCnt; i++) {
+
+            d = cellToDate(0, i);
+            addMinutes(d, minMinute);
+
+            var resource = colToResource(i);
+            var resourceHighlights = highlightsForResource(resource, highlights);
+            visEventEnds = $.map(resourceHighlights, slotEventEnd);
+
+            colSegs = sliceSegs(
+                resourceHighlights,
+                visEventEnds,
+                d,
+                addMinutes(cloneDate(d), maxMinute-minMinute)
+            );
+
+            colSegs = placeSlotSegs(colSegs); // returns a new order
+
+            for (j=0; j<colSegs.length; j++) {
+                seg = colSegs[j];
+                seg.col = i;
+                segs.push(seg);
+            }
+        }
+
+        return segs;
+    }
         
         
     function eventsForResource(resource, events) {
@@ -6245,6 +6364,19 @@ function ResourceEventRenderer() {
         }
 		
         return resourceEvents;
+    }
+
+
+    function highlightsForResource(resource, highlights) {
+        var resourceHighlights = [];
+
+        for(var i=0; i<highlights.length; i++) {
+            if(highlights[i].resourceId === resource.id) {
+                resourceHighlights.push(highlights[i])
+            }
+        }
+
+        return resourceHighlights;
     }
 
 
@@ -6499,7 +6631,138 @@ function ResourceEventRenderer() {
         }
         eventElementHandlers(event, eventElement);
     }
-	
+
+
+    function bindHighlightSeg(highlight, highlightElement) {
+        eventElementHandlers(highlight, highlightElement);
+    }
+
+
+
+    // renders highlights in the 'time slots' at the bottom
+    // TODO: when we refactor this, when user returns `false` eventRender, don't have empty space
+    // TODO: refactor will include using pixels to detect collisions instead of dates (handy for seg cmp)
+
+    function renderHighlightSegs(segs, modifiedEventId) {
+
+        var i, segCnt=segs.length, seg,
+            highlight,
+            top,
+            bottom,
+            width,
+            left,
+            right,
+            html='',
+            highlightElements,
+            highlightElement,
+            triggerRes,
+            height,
+            segmentContainer = getHighlightSegmentContainer();
+
+        // calculate position/dimensions, create html
+        for (i=0; i<segCnt; i++) {
+            seg = segs[i];
+            highlight = seg.event;
+            top = timePosition(seg.start, seg.start);
+            bottom = timePosition(seg.start, seg.end);
+            left = colLeft(seg.col);
+            right = colRight(seg.col);
+            width = right - left;
+
+            seg.top = top;
+            seg.left = left;
+            seg.outerWidth = width;
+            seg.outerHeight = bottom - top;
+            html += highlightSegHtml(event, seg);
+        }
+
+        segmentContainer[0].innerHTML = html; // faster than html()
+        highlightElements = segmentContainer.children();
+
+        // retrieve elements, run through eventRender callback, bind event handlers
+        for (i=0; i<segCnt; i++) {
+            seg = segs[i];
+            highlight = seg.event;
+            highlightElement = $(highlightElements[i]); // faster than eq()
+            triggerRes = trigger('highlightRender', highlight, highlight, highlightElement);
+            if (triggerRes === false) {
+                highlightElement.remove();
+            }else{
+                if (triggerRes && triggerRes !== true) {
+                    highlightElement.remove();
+                    highlightElement = $(triggerRes)
+                        .css({
+                            position: 'absolute',
+                            top: seg.top,
+                            left: seg.left
+                        })
+                        .appendTo(segmentContainer);
+                }
+                seg.element = highlightElement;
+                highlightElement[0]._fci = i; // for lazySegBind
+                //reportEventElement(event, eventElement);
+            }
+        }
+
+        lazySegBind(segmentContainer, segs, bindHighlightSeg);
+
+        // record highlight sides and title positions
+        for (i=0; i<segCnt; i++) {
+            seg = segs[i];
+            if (highlightElement = seg.element) {
+                seg.vsides = vsides(highlightElement, true);
+                seg.hsides = hsides(highlightElement, true);
+            }
+        }
+
+        // set all positions/dimensions at once
+        for (i=0; i<segCnt; i++) {
+            seg = segs[i];
+            if (highlightElement = seg.element) {
+                highlightElement[0].style.width = Math.max(0, seg.outerWidth - seg.hsides) + 'px';
+                height = Math.max(0, seg.outerHeight - seg.vsides);
+                highlightElement[0].style.height = height + 'px';
+                highlight = seg.event;
+                trigger('highlightAfterRender', highlight, highlight, highlightElement);
+            }
+        }
+
+    }
+
+
+    function highlightSegHtml(event, seg) {
+        var html = "<";
+        var skinCss = getSkinCss(event, opt);
+        var classes = ['fc-highlight', 'fc-highlight-vert'];
+        if (seg.isStart) {
+            classes.push('fc-highlight-start');
+        }
+        if (seg.isEnd) {
+            classes.push('fc-highlight-end');
+        }
+        if (!!seg.event.class) {
+            classes.push(seg.event.class);
+        }
+        var style = seg.event.style !== undefined ? seg.event.style : '';
+        classes = classes.concat(event.className);
+        if (event.source) {
+            classes = classes.concat(event.source.className || []);
+        }
+
+        html += "div" +
+            " class='" + classes.join(' ') + "'" +
+            " style=" +
+            "'" +
+            "position:absolute;" +
+            "top:" + seg.top + "px;" +
+            "left:" + seg.left + "px;" +
+            skinCss +
+            style +
+            "'" +
+            ">" +
+            "</div>";
+        return html;
+    }
 	
 	
     /* Dragging
