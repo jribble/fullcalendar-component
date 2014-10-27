@@ -5181,8 +5181,6 @@ function ResourceView(element, calendar, viewName) {
 			buildDayTable(); // rebuilds day table
         }
 
-        highlights = t.highlights = calendar.fetchHighlights();
-        renderHighlights(highlights);
     }
 	
 
@@ -6348,12 +6346,16 @@ function ResourceEventRenderer() {
         }
 
         renderSlotSegs(compileSlotSegs(slotEvents), modifiedEventId);
+
+        var highlights = t.highlights = calendar.fetchHighlights();
+        renderHighlights(highlights);
     }
 	
 	
     function clearEvents() {
         getDaySegmentContainer().empty();
         getSlotSegmentContainer().empty();
+        clearHighlights();
     }
 
     function renderHighlights(highlights) {
