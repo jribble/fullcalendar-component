@@ -548,6 +548,7 @@ function Calendar(element, options, eventSources, resourceSources) {
 	// called when event data arrives
 	function reportEvents(_events) {
 		events = _events;
+        events.forEach(t.normalizeEvent);
 		renderEvents();
 	}
 
@@ -5032,6 +5033,7 @@ function ResourceView(element, calendar, viewName) {
 	
     // exports
     t.renderResource = renderResource;
+    t.rerenderFooter = rerenderFooter;
     t.setWidth = setWidth;
     t.setHeight = setHeight;
 	t.afterRender = afterRender;
@@ -5210,6 +5212,18 @@ function ResourceView(element, calendar, viewName) {
         }
 
 		snapMinutes = opt('snapMinutes') || opt('slotMinutes');
+    }
+
+    function rerenderFooter(date, resourceId) {
+        // trigger events for resource column footers
+        var _resourceId = resourceId === null ? "null" : resourceId;
+        var dateString = moment(date).format("YYYY-MM-DD");
+        var footths = dayTable.find('tfoot th[data-resource-id="' + _resourceId + '" ][data-date="' + dateString + '"]');
+        footths.each(function(index, element) {
+            var el = $(element);
+            el.html('&nbsp;');
+            trigger('footerRender', el, resourceId, el);
+        });
     }
 	
 	
@@ -6307,21 +6321,80 @@ function ResourceEventRenderer() {
     var reportEventElement = t.reportEventElement;
     var showEvents = t.showEvents;
     var hideEvents = t.hideEvents;
-    var eventDrop = t.eventDrop;
     var eventResize = t.eventResize;
     var renderDayOverlay = t.renderDayOverlay;
     var clearOverlays = t.clearOverlays;
 	var renderDayEvents = t.renderDayEvents;
     var calendar = t.calendar;
-    var formatDate = calendar.formatDate;
-    var formatDates = calendar.formatDates;
     var colToResource = t.colToResource;  // imported from ResourceView.js
-    var resources = t.resources;  // imported from ResourceView.js
-	
+    var moveEvents = t.moveEvents;
+    var getEventsById = t.getEventsById;
+    var rerenderFooter = t.rerenderFooter;
 	
 	// overrides
 	t.draggableDayEvent = draggableDayEvent;
+    t.eventDrop = eventDrop;
 
+    // imports
+    var formatDate = calendar.formatDate;
+    var formatDates = calendar.formatDates;
+    var reportEventChange = calendar.reportEventChange;
+
+
+    function eventDrop(e, event, dayDelta, minuteDelta, allDay, ev, ui, resourceId) {
+        var oldAllDay = event.allDay;
+        var eventId = event._id;
+
+        // rerender footer on all of the old event columns
+        // also set the new resource id on all of the events with this id
+        var events = getEventsById(eventId);
+        var oldResourceId = event.resourceId;
+        if(!!events) events.forEach(function(event) {
+            rerenderFooter(event.start, event.resourceId);
+            event.resourceId = resourceId;
+        });
+
+        moveEvents(getEventsById(eventId), dayDelta, minuteDelta, allDay);
+
+        // rerender footer on all of the new event columns
+        events = getEventsById(eventId);
+        if(!!events) events.forEach(function(event) {
+            rerenderFooter(event.start, event.resourceId);
+        });
+
+        trigger(
+            'eventDrop',
+            e,
+            event,
+            dayDelta,
+            minuteDelta,
+            allDay,
+            function() {
+                // TODO: investigate cases where this inverse technique might not work
+                // rerender footer on all of the old event columns
+                // also set the new resource id on all of the events with this id
+                var events = getEventsById(eventId);
+                if(!!events) events.forEach(function(event) {
+                    rerenderFooter(event.start, event.resourceId);
+                    event.resourceId = oldResourceId;
+                });
+
+                moveEvents(getEventsById(eventId), -dayDelta, -minuteDelta, oldAllDay);
+
+                // rerender footer on all of the new event columns
+                events = getEventsById(eventId);
+                if(!!events) events.forEach(function(event) {
+                    rerenderFooter(event.start, event.resourceId);
+                });
+
+                reportEventChange(eventId);
+            },
+            ev,
+            ui,
+            oldResourceId
+        );
+        reportEventChange(eventId);
+    }
 
 
     /* Rendering
@@ -6341,7 +6414,7 @@ function ResourceEventRenderer() {
         }
 
         if (opt('allDaySlot')) {
-            renderDayEvents(compileDaySegs(dayEvents), modifiedEventId, resources);
+            renderDayEvents(compileDaySegs(dayEvents), modifiedEventId, t.resources);
             setHeight(); // no params means set to viewHeight
         }
 
@@ -6409,7 +6482,7 @@ function ResourceEventRenderer() {
 
 
     function resourceDate(col) {
-        var delta = Math.floor(col / resources.length);
+        var delta = Math.floor(col / t.resources.length);
         var date = cloneDate(t.visStart);
         return addDays(date, delta);
     }
@@ -6937,9 +7010,8 @@ function ResourceEventRenderer() {
 				hoverListener.start(function(cell, origCell) {
                     clearOverlays();
                     if (cell) {
-                        revert = false;
-                        var origResourceNum = origCell.col % resources.length;
-                        var resourceNum = cell.col % resources.length;
+                        var origResourceNum = origCell.col % t.resources.length;
+                        var resourceNum = cell.col % t.resources.length;
 						var origDate = cellToDate(0, origCell.col);
 						var date = cellToDate(0, cell.col);
 						dayDelta = dayDiff(date, origDate);
@@ -6979,15 +7051,14 @@ function ResourceEventRenderer() {
                 }, ev, 'drag');
             },
             stop: function(ev, ui) {
-                var cell = hoverListener.stop();
                 clearOverlays();
-                if(!revert && cell) event.resourceId = resources[cell.col % resources.length].id;
                 trigger('eventDragStop', eventElement, event, ev, ui);
                 if (revert) {
                     // hasn't moved or is out of bounds (draggable has already reverted)
                     resetElement();
                     eventElement.css('filter', ''); // clear IE opacity side-effects
                     showEvents(event, eventElement);
+                    trigger('eventDragCancel', eventElement, event, ev, ui);
                 }else{
                     // changed!
                     var minuteDelta = 0;
@@ -6998,7 +7069,10 @@ function ResourceEventRenderer() {
                         - (event.start.getHours() * 60 + event.start.getMinutes());
                     }
 
-                    eventDrop(this, event, dayDelta, minuteDelta, allDay, ev, ui);
+                    var resourceId = null;
+                    var cell = hoverListener.stop();
+                    resourceId = resources[cell.col % t.resources.length].id;
+                    eventDrop(this, event, dayDelta, minuteDelta, allDay, ev, ui, resourceId);
                 }
             }
         });
@@ -7055,7 +7129,7 @@ function ResourceEventRenderer() {
 				colDelta = prevColDelta = 0;
 				dayDelta = 0;
                 minuteDelta = prevMinuteDelta = 0;
-                resourceNum = (origCell.col % resources.length);
+                resourceNum = (origCell.col % t.resources.length);
 
 			},
 			drag: function(ev, ui) {
@@ -7083,7 +7157,7 @@ function ResourceEventRenderer() {
 						col = Math.min(colCnt-1, col);
 						var date = cellToDate(0, col);
 						dayDelta = dayDiff(date, origDate);
-                        resourceNum = (col % resources.length);
+                        resourceNum = (col % t.resources.length);
                     }
 
 					// calculate minute delta (only if over slots)
@@ -7118,11 +7192,10 @@ function ResourceEventRenderer() {
                 clearOverlays();
                 trigger('eventDragStop', eventElement, event, ev, ui);
 
-                var resourceId = resources[resourceNum].id;
+                var resourceId = t.resources[resourceNum].id;
 
 				if (isInBounds && (isAllDay || dayDelta || minuteDelta || resourceId != event.resourceId)) { // changed!
-                    event.resourceId = resourceId;
-					eventDrop(this, event, dayDelta, isAllDay ? 0 : minuteDelta, isAllDay, ev, ui);
+					eventDrop(this, event, dayDelta, isAllDay ? 0 : minuteDelta, isAllDay, ev, ui, resourceId);
 				}
 				else { // either no change or out-of-bounds (draggable has already reverted)
 
@@ -7143,6 +7216,8 @@ function ResourceEventRenderer() {
 					eventElement.css(origPosition);
 
                     showEvents(event, eventElement);
+
+                    trigger('eventDragCancel', eventElement, event, ev, ui);
                 }
             }
         });
@@ -7458,10 +7533,12 @@ function View(element, calendar, viewName) {
 	t.showEvents = showEvents;
 	t.hideEvents = hideEvents;
 	t.eventDrop = eventDrop;
+    t.moveEvents = moveEvents;
 	t.eventResize = eventResize;
 	// t.title
 	// t.start, t.end
 	// t.visStart, t.visEnd
+    t.getEventsById = getEventsById;
 	
 	
 	// imports
@@ -7475,9 +7552,11 @@ function View(element, calendar, viewName) {
 	var eventElementsByID = {}; // eventID mapped to array of jQuery elements
 	var eventElementCouples = []; // array of objects, { event, element } // TODO: unify with segment system
 	var options = calendar.options;
-	
-	
-	
+
+    function getEventsById(eventId) {
+        return eventsByID[eventId];
+    }
+
 	function opt(name, viewNameOverride) {
 		var v = options[name];
 		if ($.isPlainObject(v)) {
