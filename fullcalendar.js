@@ -465,7 +465,7 @@ function Calendar(element, options, eventSources, resourceSources) {
 
 		ignoreWindowResize++;
 		currentView.setHeight(suggestedViewHeight());
-		currentView.setWidth(content.width());
+        currentView.setWidth(content[0].getBoundingClientRect().width);
 		ignoreWindowResize--;
 
 		elementOuterWidth = element.outerWidth();
@@ -6174,6 +6174,7 @@ function ResourceView(element, calendar, viewName) {
     function slotSelectionMousedown(ev) {
         if (ev.which == 1 && opt('selectable')) { // ev.which==1 means left mouse button
             unselect(ev);
+            var lastDate;
             var dates;
             var resource;
             hoverListener.start(function(cell, origCell) {
@@ -6181,14 +6182,14 @@ function ResourceView(element, calendar, viewName) {
 				if (cell && cell.col == origCell.col && !getIsCellAllDay(cell)) {
                     resource = resources[cell.col % resources.length];
                     var d1 = realCellToDate(origCell);
-                    var d2 = realCellToDate(cell);
+                    var d2 = lastDate = realCellToDate(cell);
                     dates = [
                     d1,
 						addMinutes(cloneDate(d1), snapMinutes), // calculate minutes depending on selection slot minutes
                     d2,
 						addMinutes(cloneDate(d2), snapMinutes)
 					].sort(dateCompare);
-                    renderSlotSelection(dates[0], dates[3], resource);
+                    if(!opt('hideSelection')) renderSlotSelection(dates[0], dates[3], resource);
                 }else{
                     dates = null;
                 }
@@ -6199,7 +6200,7 @@ function ResourceView(element, calendar, viewName) {
 					if (+dates[0] == +dates[1]) {
 						reportDayClick(dates[0], false, ev);
 					}
-                    reportSelection(dates[0], dates[3], false, ev, resource.id);
+                    reportSelection(dates[0], dates[3], false, ev, resource.id, lastDate);
                 }
             });
         }
@@ -6221,7 +6222,7 @@ function ResourceView(element, calendar, viewName) {
                         d1,
                         d2
                     ].sort(dateCompare);
-                    renderSelection(dates[0], dates[1], true, resource);
+                    if(!opt('hideSelection')) renderSelection(dates[0], dates[1], true, resource);
                 }else{
                     dates = null;
                 }
@@ -8869,9 +8870,9 @@ function SelectionManager() {
 	}
 	
 	
-	function reportSelection(startDate, endDate, allDay, ev, resource) {
+	function reportSelection(startDate, endDate, allDay, ev, resource, lastDate) {
 		selected = true;
-		trigger('select', null, startDate, endDate, allDay, ev, resource);
+		trigger('select', null, startDate, endDate, allDay, ev, resource, lastDate);
 	}
 	
 	
